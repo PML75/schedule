@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var isDarkMode = false
     @State private var shifts: [Shift] = [] // Store shifts
     @State private var availability: [String: Availability] = [:] // Store employee availability keyed by name
+    @State private var timeOffRequests: [TimeOffRequest] = []
+    @State private var shiftTrades: [ShiftTradeRequest] = []
 
     var body: some View {
         VStack {
@@ -18,15 +20,20 @@ struct ContentView: View {
                             Image(systemName: "house.fill")
                             Text("Home")
                         }
+                    ShiftManagementView(userRole: userRole ?? "employee", shifts: $shifts, timeOffRequests: $timeOffRequests, shiftTrades: $shiftTrades, currentUser: $currentUser)
+                        .tabItem {
+                            Image(systemName: "clock.fill")
+                            Text("Shifts")
+                        }
 
-                    // Pass currentUser to CalendarView so it can highlight matching shifts.
                     CalendarView(shifts: shifts, currentUser: currentUser ?? "")
                         .tabItem {
-                            Image(systemName: "calendar")
+                            Image(systemName: "calendars")
                             Text("Calendar")
                         }
 
                     SettingsView(isLoggedIn: $isLoggedIn, isDarkMode: $isDarkMode)
+                    
                         .tabItem {
                             Image(systemName: "gearshape.fill")
                             Text("Settings")
@@ -57,6 +64,22 @@ struct Availability {
     var friday: String
     var saturday: String
     var sunday: String
+}
+
+struct TimeOffRequest: Identifiable {
+    let id = UUID()
+    let employeeName: String
+    let startDate: Date
+    let endDate: Date
+    var status: String
+}
+
+struct ShiftTradeRequest: Identifiable {
+    let id = UUID()
+    let employeeName: String
+    let shift: Shift
+    var status: String
+    var coverEmployee: String?
 }
 
 struct AuthView: View {
@@ -398,4 +421,217 @@ struct SettingsView: View {
         }
         .padding()
     }
+}
+
+struct ShiftManagementView: View {
+    var userRole: String
+    @Binding var shifts: [Shift]
+    @Binding var timeOffRequests: [TimeOffRequest]
+    @Binding var shiftTrades: [ShiftTradeRequest]
+    @Binding var currentUser: String?
+    
+    @State private var startDate = Date()
+    @State private var endDate = Date()
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                Text("Shift Management")
+                    .font(.largeTitle)
+                    .padding()
+                
+                if userRole == "manager" {
+                    managerReviewSection
+                } else {
+                    employeeActionsSection
+                }
+            }
+            .navigationTitle("Manage Shifts")
+            .padding()
+        }
+    }
+    
+    private var managerReviewSection: some View {
+        List {
+            Section(header: Text("Time Off Requests")) {
+                ForEach(timeOffRequests) { request in
+                    requestRow(request)
+                }
+            }
+            
+            Section(header: Text("Shift Trade Requests")) {
+                ForEach(shiftTrades.filter { $0.status == "Pending" }) { trade in
+                    tradeRow(trade)
+                }
+            }
+        }
+    }
+    
+    
+    private var employeeActionsSection: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Request Time Off")
+                        .font(.title2)
+                        .bold()
+                        .padding(.horizontal)
+                    
+                    DatePicker("Start Date", selection: $startDate, displayedComponents: .date)
+                        .padding(.horizontal)
+                    
+                    DatePicker("End Date", selection: $endDate, displayedComponents: .date)
+                        .padding(.horizontal)
+                    
+                    Button("Request Time Off") {
+                        let newRequest = TimeOffRequest(employeeName: currentUser ?? "Unknown", startDate: startDate, endDate: endDate, status: "Pending")
+                        timeOffRequests.append(newRequest)
+                    }
+                    .padding(.horizontal)
+                    .buttonStyle(.borderedProminent)
+                }
+                
+                Divider().padding(.horizontal)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Your Shifts Available for Trade")
+                        .font(.title2)
+                        .bold()
+                        .padding(.horizontal)
+                    
+                    ForEach(shifts.filter { $0.name == currentUser }, id: \.id) { shift in
+                        Button(action: { requestShiftTrade(shift) }) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(shift.time)
+                                    .font(.headline)
+                                Text("Position: \(shift.position), Section: \(shift.section)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(12)
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+                
+                Divider().padding(.horizontal)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Shifts Available to Cover")
+                        .font(.title2)
+                        .bold()
+                        .padding(.horizontal)
+                    
+                    ForEach(shiftTrades.filter { $0.status == "Pending" && $0.employeeName != currentUser }, id: \.id) { trade in
+                        Button(action: { coverShift(trade) }) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(trade.shift.time)
+                                    .font(.headline)
+                                Text("Position: \(trade.shift.position), Section: \(trade.shift.section)")
+                                    .font(.subheadline)
+                                Text("Requested by: \(trade.employeeName)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                if let coverEmployee = trade.coverEmployee {
+                                    Text("Covered by: \(coverEmployee)")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(12)
+                            .padding(.horizontal)
+                        }
+                        .disabled(trade.coverEmployee != nil) // Disable the button if already covered
+                    }
+                }
+            }
+            .padding(.vertical)
+        }
+    }
+    
+    private func requestRow(_ request: TimeOffRequest) -> some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text("\(request.employeeName) requested time off")
+                    .font(.headline)
+                Text("From: \(request.startDate.formatted()) to \(request.endDate.formatted())")
+                    .font(.subheadline)
+                Text("Status: \(request.status)")
+                    .bold()
+                    .foregroundColor(colorForStatus(request.status))
+            }
+            Spacer()
+            if request.status == "Pending" {
+                Button("Approve") { updateTimeOffRequestStatus(request.id, to: "Approved") }
+                    .buttonStyle(.bordered)
+                
+                Button("Deny") { updateTimeOffRequestStatus(request.id, to: "Denied") }
+                    .buttonStyle(.bordered)
+            }
+        }
+        .padding()
+    }
+    
+    private func tradeRow(_ trade: ShiftTradeRequest) -> some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text("\(trade.employeeName) wants to trade a shift")
+                    .font(.headline)
+                Text("\(trade.shift.time) - \(trade.shift.position) (\(trade.shift.section))")
+                    .font(.subheadline)
+                Text("Status: \(trade.status)")
+                    .bold()
+                    .foregroundColor(colorForStatus(trade.status))
+                
+                if let coverEmployee = trade.coverEmployee {
+                    Text("Covered by: \(coverEmployee)")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+            }
+            Spacer()
+        }
+        .padding()
+    }
+    
+    private func requestShiftTrade(_ shift: Shift) {
+        let newTrade = ShiftTradeRequest(employeeName: currentUser ?? "Unknown", shift: shift, status: "Pending", coverEmployee: nil)
+        shiftTrades.append(newTrade)
+    }
+    
+    private func coverShift(_ trade: ShiftTradeRequest) {
+        if let index = shiftTrades.firstIndex(where: { $0.id == trade.id }) {
+            shiftTrades[index].coverEmployee = currentUser
+            shiftTrades[index].status = "Accepted"
+            
+            
+            print("Shift covered: \(shiftTrades[index].shift.time) by \(shiftTrades[index].coverEmployee ?? "")")
+            
+            shiftTrades.remove(at: index)
+        }
+    }
+    
+    
+    private func updateTimeOffRequestStatus(_ requestId: UUID, to status: String) {
+        if let index = timeOffRequests.firstIndex(where: { $0.id == requestId }) {
+            timeOffRequests[index].status = status
+        }
+    }
+    
+    private func colorForStatus(_ status: String) -> Color {
+        switch status {
+        case "Pending": return .orange
+        case "Approved", "Accepted": return .green
+        case "Denied", "Declined": return .red
+        default: return .black
+        }
+    }
+    
 }
