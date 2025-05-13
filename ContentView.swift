@@ -1,51 +1,7 @@
+
 import SwiftUI
 
-struct ContentView: View {
-    @State private var isLoggedIn = false
-    @State private var userRole: String? = nil
-    @State private var currentUser: String? = nil
-    @State private var users: [String: (password: String, role: String)] = ["manager": ("manager1!", "manager")]
-    @State private var isDarkMode = false
-    @State private var shifts: [Shift] = [] // Store shifts
-    @State private var availability: [String: Availability] = [:] // Store employee availability keyed by name
-    @State private var timeOffRequests: [TimeOffRequest] = []
-    @State private var shiftTrades: [ShiftTradeRequest] = []
-
-    var body: some View {
-        VStack {
-            if isLoggedIn {
-                TabView {
-                    HomeView(userRole: userRole ?? "employee", shifts: $shifts, availability: $availability)
-                        .tabItem {
-                            Image(systemName: "house.fill")
-                            Text("Home")
-                        }
-                    ShiftManagementView(userRole: userRole ?? "employee", shifts: $shifts, timeOffRequests: $timeOffRequests, shiftTrades: $shiftTrades, currentUser: $currentUser)
-                        .tabItem {
-                            Image(systemName: "clock.fill")
-                            Text("Shifts")
-                        }
-
-                    CalendarView(shifts: shifts, currentUser: currentUser ?? "")
-                        .tabItem {
-                            Image(systemName: "calendars")
-                            Text("Calendar")
-                        }
-
-                    SettingsView(isLoggedIn: $isLoggedIn, isDarkMode: $isDarkMode)
-                    
-                        .tabItem {
-                            Image(systemName: "gearshape.fill")
-                            Text("Settings")
-                        }
-                }
-                .preferredColorScheme(isDarkMode ? .dark : .light)
-            } else {
-                AuthView(isLoggedIn: $isLoggedIn, userRole: $userRole, currentUser: $currentUser, users: $users)
-            }
-        }
-    }
-}
+// MARK: - Models
 
 struct Shift: Identifiable {
     let id = UUID()
@@ -82,6 +38,75 @@ struct ShiftTradeRequest: Identifiable {
     var coverEmployee: String?
 }
 
+// MARK: - Root View
+
+struct ContentView: View {
+    @State private var isLoggedIn = false
+    @State private var userRole: String? = nil
+    @State private var currentUser: String? = nil
+    @State private var users: [String: (password: String, role: String)] = [
+        "manager": ("manager1!", "manager")
+    ]
+    @State private var isDarkMode = false
+    @State private var shifts: [Shift] = []
+    @State private var availability: [String: Availability] = [:]
+    @State private var timeOffRequests: [TimeOffRequest] = []
+    @State private var shiftTrades: [ShiftTradeRequest] = []
+
+    var body: some View {
+        VStack {
+            if isLoggedIn {
+                TabView {
+                    HomeView(
+                        userRole: userRole ?? "employee",
+                        currentUser: currentUser ?? "",
+                        shifts: $shifts,
+                        availability: $availability
+                    )
+                    .tabItem {
+                        Image(systemName: "house.fill")
+                        Text("Home")
+                    }
+
+                    ShiftManagementView(
+                        userRole: userRole ?? "employee",
+                        shifts: $shifts,
+                        timeOffRequests: $timeOffRequests,
+                        shiftTrades: $shiftTrades,
+                        currentUser: $currentUser
+                    )
+                    .tabItem {
+                        Image(systemName: "clock.fill")
+                        Text("Shifts")
+                    }
+
+                    CalendarView(shifts: shifts, currentUser: currentUser ?? "")
+                        .tabItem {
+                            Image(systemName: "calendars")
+                            Text("Calendar")
+                        }
+
+                    SettingsView(isLoggedIn: $isLoggedIn, isDarkMode: $isDarkMode)
+                        .tabItem {
+                            Image(systemName: "gearshape.fill")
+                            Text("Settings")
+                        }
+                }
+                .preferredColorScheme(isDarkMode ? .dark : .light)
+            } else {
+                AuthView(
+                    isLoggedIn: $isLoggedIn,
+                    userRole: $userRole,
+                    currentUser: $currentUser,
+                    users: $users
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Authentication
+
 struct AuthView: View {
     @Binding var isLoggedIn: Bool
     @Binding var userRole: String?
@@ -114,15 +139,13 @@ struct AuthView: View {
             }
 
             Button(isRegistering ? "Register" : "Sign In") {
-                if isRegistering {
-                    registerUser()
-                } else {
-                    authenticateUser()
-                }
+                if isRegistering { registerUser() } else { authenticateUser() }
             }
             .padding()
 
-            Button(isRegistering ? "Already have an account? Sign In" : "Don't have an account? Register") {
+            Button(isRegistering
+                   ? "Already have an account? Sign In"
+                   : "Don't have an account? Register") {
                 isRegistering.toggle()
             }
             .padding()
@@ -130,31 +153,32 @@ struct AuthView: View {
         .padding()
     }
 
-    func authenticateUser() {
+    private func authenticateUser() {
         if let user = users[email.lowercased()], user.password == password {
             userRole = user.role
-            isLoggedIn = true
-            // Save the logged-in username.
             currentUser = email.lowercased()
+            isLoggedIn = true
         } else {
             errorMessage = "Invalid credentials. Try again."
         }
     }
 
-    func registerUser() {
-        if email.isEmpty || password.isEmpty {
+    private func registerUser() {
+        guard !email.isEmpty, !password.isEmpty else {
             errorMessage = "Email and password cannot be empty."
             return
         }
-        if users[email.lowercased()] != nil {
+        guard users[email.lowercased()] == nil else {
             errorMessage = "User already exists."
             return
         }
         users[email.lowercased()] = (password, "employee")
-        errorMessage = "Registered successfully! Please sign in."
+        errorMessage = "Registered! Now please sign in."
         isRegistering = false
     }
 }
+
+// MARK: - Weather
 
 struct OpenMeteoResponse: Codable {
     let current_weather: CurrentWeather
@@ -167,23 +191,24 @@ struct CurrentWeather: Codable {
 }
 
 class WeatherViewModel: ObservableObject {
-    @Published var temperature: String = "Loading..."
-    @Published var windSpeed: String = ""
+    @Published var temperature = "Loading..."
+    @Published var windSpeed = ""
 
     func fetchWeather() {
         let urlString = "https://api.open-meteo.com/v1/forecast?latitude=33.68&longitude=-117.83&current_weather=true"
         guard let url = URL(string: urlString) else { return }
 
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            if let data = data {
-                if let result = try? JSONDecoder().decode(OpenMeteoResponse.self, from: data) {
-                    DispatchQueue.main.async {
-                        self.temperature = "\(result.current_weather.temperature)°C"
-                        self.windSpeed = "\(result.current_weather.windspeed) km/h"
-                    }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            if let data = data,
+               let result = try? JSONDecoder().decode(OpenMeteoResponse.self, from: data)
+            {
+                DispatchQueue.main.async {
+                    self.temperature = "\(result.current_weather.temperature)°C"
+                    self.windSpeed = "\(result.current_weather.windspeed) km/h"
                 }
             }
-        }.resume()
+        }
+        .resume()
     }
 }
 
@@ -198,24 +223,26 @@ struct WeatherView: View {
             Text("Temperature: \(viewModel.temperature)")
             Text("Wind Speed: \(viewModel.windSpeed)")
         }
-        .onAppear {
-            viewModel.fetchWeather()
-        }
+        .onAppear { viewModel.fetchWeather() }
         .padding()
     }
 }
 
+// MARK: - Home
 
 struct HomeView: View {
-    var userRole: String
+    let userRole: String
+    let currentUser: String
     @Binding var shifts: [Shift]
     @Binding var availability: [String: Availability]
+
     @State private var showShiftCreator = false
     @State private var showAvailabilityForm = false
 
     var body: some View {
         VStack {
             WeatherView()
+
             Text("Welcome, \(userRole == "manager" ? "Manager" : "Employee")!")
                 .font(.largeTitle)
                 .padding()
@@ -240,7 +267,9 @@ struct HomeView: View {
                     }
                 }
                 .padding()
+
             } else {
+                // Employee: assign availability + view own shifts
                 Button("Create Availability") {
                     showAvailabilityForm = true
                 }
@@ -248,8 +277,38 @@ struct HomeView: View {
                 .sheet(isPresented: $showAvailabilityForm) {
                     AvailabilityForm(availability: $availability)
                 }
+
+                Divider().padding(.vertical)
+
+                Text("Your Scheduled Shifts")
+                    .font(.headline)
+                    .padding(.bottom, 4)
+
+                if filteredShifts.isEmpty {
+                    Text("No shifts scheduled.")
+                        .foregroundColor(.secondary)
+                } else {
+                    List(filteredShifts) { shift in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(shift.date, style: .date)
+                                    .font(.subheadline)
+                                Text(shift.time)
+                                    .font(.caption)
+                                Text("\(shift.position) • \(shift.section)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .listStyle(PlainListStyle())
+                }
             }
         }
+    }
+
+    private var filteredShifts: [Shift] {
+        shifts.filter { $0.name.lowercased() == currentUser.lowercased() }
     }
 }
 
