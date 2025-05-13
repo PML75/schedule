@@ -156,6 +156,56 @@ struct AuthView: View {
     }
 }
 
+struct OpenMeteoResponse: Codable {
+    let current_weather: CurrentWeather
+}
+
+struct CurrentWeather: Codable {
+    let temperature: Double
+    let windspeed: Double
+    let weathercode: Int
+}
+
+class WeatherViewModel: ObservableObject {
+    @Published var temperature: String = "Loading..."
+    @Published var windSpeed: String = ""
+
+    func fetchWeather() {
+        let urlString = "https://api.open-meteo.com/v1/forecast?latitude=33.68&longitude=-117.83&current_weather=true"
+        guard let url = URL(string: urlString) else { return }
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let data = data {
+                if let result = try? JSONDecoder().decode(OpenMeteoResponse.self, from: data) {
+                    DispatchQueue.main.async {
+                        self.temperature = "\(result.current_weather.temperature)°C"
+                        self.windSpeed = "\(result.current_weather.windspeed) km/h"
+                    }
+                }
+            }
+        }.resume()
+    }
+}
+
+struct WeatherView: View {
+    @StateObject private var viewModel = WeatherViewModel()
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("Current Weather")
+                .font(.title2)
+                .bold()
+            Text("Temperature: \(viewModel.temperature)")
+            Text("Wind Speed: \(viewModel.windSpeed)")
+        }
+        .onAppear {
+            viewModel.fetchWeather()
+        }
+        .padding()
+    }
+}
+
+
 struct HomeView: View {
     var userRole: String
     @Binding var shifts: [Shift]
@@ -165,6 +215,7 @@ struct HomeView: View {
 
     var body: some View {
         VStack {
+            WeatherView()
             Text("Welcome, \(userRole == "manager" ? "Manager" : "Employee")!")
                 .font(.largeTitle)
                 .padding()
@@ -484,8 +535,18 @@ struct ShiftManagementView: View {
                         .padding(.horizontal)
                     
                     Button("Request Time Off") {
-                        let newRequest = TimeOffRequest(employeeName: currentUser ?? "Unknown", startDate: startDate, endDate: endDate, status: "Pending")
-                        timeOffRequests.append(newRequest)
+                        if let user = currentUser, !user.isEmpty {
+                            let newRequest = TimeOffRequest(
+                                employeeName: user,
+                                startDate: startDate,
+                                endDate: endDate,
+                                status: "Pending"
+                            )
+                            timeOffRequests.append(newRequest) // this should work if properly bound
+                            print("New time off request submitted by (user)")
+                        } else {
+                            print("No current user found, cannot submit request.")
+                        }
                     }
                     .padding(.horizontal)
                     .buttonStyle(.borderedProminent)
