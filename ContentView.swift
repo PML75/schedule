@@ -1,5 +1,6 @@
 
 import SwiftUI
+import UserNotifications
 
 // MARK: - Models
 
@@ -451,61 +452,37 @@ struct DayShiftSquare: View {
 
     var body: some View {
         VStack {
-            Text(dayFormatted())
-                .font(.headline)
-                .padding(.bottom, 4)
+            Text(dayFormatted()).font(.headline).padding(.bottom, 4)
 
             if isExpanded {
                 Divider()
                 if shifts.isEmpty {
-                    Text("No Shifts")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Text("No Shifts").font(.caption).foregroundColor(.secondary)
                 } else {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment:.leading, spacing: 4) {
                         ForEach(shifts) { shift in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(shift.time)
-                                    .font(.subheadline)
+                            VStack(alignment:.leading, spacing: 2) {
+                                Text(shift.time).font(.subheadline)
                                 HStack {
-                                    // Highlight the shift name if it matches the current user.
                                     if shift.name.lowercased() == currentUser.lowercased() {
-                                        Text(shift.name)
-                                            .font(.caption)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(.blue)
+                                        Text(shift.name).font(.caption).fontWeight(.bold).foregroundColor(.blue)
                                     } else {
-                                        Text(shift.name)
-                                            .font(.caption)
+                                        Text(shift.name).font(.caption)
                                     }
-                                    Text("• \(shift.position) • \(shift.section)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                    Text("• \(shift.position) • \(shift.section)").font(.caption).foregroundColor(.secondary)
                                 }
-                            }
-                            .padding(4)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(4)
+                            }.padding(4).background(Color.gray.opacity(0.1)).cornerRadius(4)
                         }
                     }
                 }
             } else {
                 if shifts.isEmpty {
-                    Text("No Shifts")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Text("No Shifts").font(.caption).foregroundColor(.secondary)
                 } else {
-                    Text("\(shifts.count) Shift\(shifts.count > 1 ? "s" : "")")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Text("\(shifts.count) Shift\(shifts.count > 1 ? "s" : "")").font(.caption).foregroundColor(.secondary)
                 }
             }
-        }
-        .padding()
-        .frame(width: isExpanded ? 200 : 100, height: isExpanded ? 200 : 100)
-        .background(Color.blue.opacity(0.1))
-        .cornerRadius(8)
-        .animation(.easeInOut, value: isExpanded)
+        }.padding().frame(width: isExpanded ? 200 : 100, height: isExpanded ? 200 : 100).background(isExpanded ? Color.blue.opacity(0.2) : Color.blue.opacity(0.1)).cornerRadius(8).shadow(color: isExpanded ? Color.black.opacity(0.2) : Color.clear, radius: isExpanded ? 10 : 0, x: 0, y: 5).scaleEffect(isExpanded ? 1.05 : 1.0).animation(.easeInOut, value: isExpanded)
     }
 
     func dayFormatted() -> String {
@@ -518,11 +495,26 @@ struct DayShiftSquare: View {
 struct SettingsView: View {
     @Binding var isLoggedIn: Bool
     @Binding var isDarkMode: Bool
+    @State private var notificationsEnabled: Bool = false //tracks whether user wants to receive notifications
+    @State private var minutesBeforeNotification: String = "60" // Default to 60 minutes
 
     var body: some View {
         VStack {
             Toggle("Dark Mode", isOn: $isDarkMode)
                 .padding()
+            
+            Toggle("Enable Notifications", isOn: $notificationsEnabled).padding().onChange(of: notificationsEnabled) { value in
+                if value {
+                            requestNotificationPermission()
+                            } else {
+                            cancelAllNotifications()
+                            }
+                         }
+            HStack {
+                            Text("Notify me")
+                            TextField("Minutes before", text: $minutesBeforeNotification).keyboardType(.numberPad).frame(width: 50).textFieldStyle(RoundedBorderTextFieldStyle())
+                            Text("minutes before shift")
+                        }.padding()
 
             Button("Sign Out") {
                 isLoggedIn = false
@@ -531,6 +523,41 @@ struct SettingsView: View {
         }
         .padding()
     }
+    
+    func scheduleNotification(for shift: Shift, minutesBefore: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Upcoming Shift"
+        content.body = "You have a shift at \(shift.time) for the position \(shift.position)."
+        content.sound = UNNotificationSound.default
+
+        let calendar = Calendar.current
+        // Calculate the trigger date based on the specified minutes before the shift
+        if let triggerDate = calendar.date(byAdding:.minute, value: -minutesBefore, to: shift.date) {
+            let trigger = UNCalendarNotificationTrigger(dateMatching: calendar.dateComponents([.year,.month,.day,.hour,.minute], from: triggerDate), repeats: false)
+
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
+
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    print("Error scheduling notification: \(error)")
+                }
+            }
+        } else {
+            print("Failed to calculate trigger date.")
+        }
+    }
+    func requestNotificationPermission() {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert,.badge,.sound]) { granted, error in
+                if let error = error {
+                    print("Error requesting notification authorization: \(error)")
+                }
+                print("Notification permission granted: \(granted)")
+            }
+        }
+
+    func cancelAllNotifications() {
+            UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        }
 }
 
 struct ShiftManagementView: View {
