@@ -1,5 +1,6 @@
 
 import SwiftUI
+import UIKit
 import UserNotifications
 
 // MARK: - Models
@@ -503,18 +504,19 @@ struct SettingsView: View {
             Toggle("Dark Mode", isOn: $isDarkMode)
                 .padding()
             
-            Toggle("Enable Notifications", isOn: $notificationsEnabled).padding().onChange(of: notificationsEnabled) { value in
-                if value {
-                            requestNotificationPermission()
-                            } else {
-                            cancelAllNotifications()
-                            }
-                         }
-            HStack {
-                            Text("Notify me")
-                            TextField("Minutes before", text: $minutesBeforeNotification).keyboardType(.numberPad).frame(width: 50).textFieldStyle(RoundedBorderTextFieldStyle())
-                            Text("minutes before shift")
-                        }.padding()
+            // Toggle("Enable Notifications", isOn: $notificationsEnabled).padding().onChange(of: notificationsEnabled) { value in
+            //     if value {
+            //                 requestNotificationPermission()
+            //                 } else {
+            //                 cancelAllNotifications()
+            //                 }
+            //              }
+            // HStack {
+            //                 Text("Notify me")
+            //                 TextField("Minutes before", text: $minutesBeforeNotification).keyboardType(.numberPad).frame(width: 50).textFieldStyle(RoundedBorderTextFieldStyle())
+            //                 Text("minutes before shift")
+            //             }.padding()
+            //onChange has been deprecated, and we have not been able to come up with a workaround 
 
             Button("Sign Out") {
                 isLoggedIn = false
